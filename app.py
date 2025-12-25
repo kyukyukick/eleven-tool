@@ -69,31 +69,34 @@ def try_save(shots, main_gk_gloves, main_gk_str, bonus_gloves, gk_name, attackin
 
 def render_dynamic_inputs(prefix):
     """
-    動的に行を追加・削除できる入力欄を生成する (横並び強制版)
+    動的に行を追加・削除できる入力欄を生成する (スマホ横並び対応版)
     """
+    # Session Stateで人数管理
     count_key = f"count_{prefix}"
     if count_key not in st.session_state:
-        st.session_state[count_key] = 1
+        st.session_state[count_key] = 1  # デフォルト1人
     
     current_count = st.session_state[count_key]
     players = []
     
+    # 選択肢 (表示幅を節約)
     role_options = {"ー": None, "⚽攻": "att", "🛡️守": "def"}
 
     for i in range(current_count):
-        # ★ここを調整: [1, 1]の等幅にして横並びを維持しやすくする
-        c1, c2 = st.columns([1, 1]) 
+        # ★スマホ対策: 比率を調整して横並びを維持させる
+        # 左(役割):右(強度) = 55:45 くらい
+        c1, c2 = st.columns([1.2, 1]) 
         
         with c1:
             role_key = st.selectbox(
-                f"役割{i}", 
+                f"選手{i+1}", 
                 options=role_options.keys(), 
                 key=f"{prefix}_role_{i}", 
-                label_visibility="collapsed"
+                label_visibility="collapsed" # ラベル非表示で詰める
             )
         with c2:
             strength = st.number_input(
-                f"強度{i}", 
+                "強度", 
                 min_value=1, max_value=20, value=1, step=1,
                 key=f"{prefix}_str_{i}",
                 label_visibility="collapsed"
@@ -103,8 +106,10 @@ def render_dynamic_inputs(prefix):
         if role_val is not None:
             players.append(Player(strength, role_val))
     
-    # 追加・削除ボタン
+    # 追加・削除ボタンエリア
     b_col1, b_col2 = st.columns([1, 1])
+    
+    # ボタンのコールバック関数定義
     def increase():
         st.session_state[count_key] += 1
     def decrease():
@@ -112,9 +117,9 @@ def render_dynamic_inputs(prefix):
             st.session_state[count_key] -= 1
 
     with b_col1:
-        st.button("＋追加", key=f"add_{prefix}", on_click=increase, use_container_width=True)
+        st.button("＋", key=f"add_{prefix}", on_click=increase, use_container_width=True)
     with b_col2:
-        st.button("ー削除", key=f"del_{prefix}", on_click=decrease, use_container_width=True, disabled=(current_count==0))
+        st.button("ー", key=f"del_{prefix}", on_click=decrease, use_container_width=True, disabled=(current_count==0))
 
     return players
 
@@ -139,25 +144,18 @@ with st.expander("⚙️ チーム名・ルール設定", expanded=False):
 # GK入力
 st.markdown("##### 🧤 ゴールキーパー")
 col_gk1, col_gk2 = st.columns(2)
-
 with col_gk1:
     st.info(f"🔵 {my_team_name}")
-    # ラベルを上に表示し、入力欄を横並びにする
-    st.caption("グローブ / 強度")
-    gc1, gc2 = st.columns([1, 1])
-    with gc1:
-        my_gk_gloves = st.number_input("グローブ", 0, 10, 2, step=1, key="my_gk_g", label_visibility="collapsed")
-    with gc2:
-        my_gk_str = st.number_input("強度", 0, 10, 1, step=1, key="my_gk_s", label_visibility="collapsed")
+    # スマホで見やすいように横並び調整
+    gc1, gc2 = st.columns(2)
+    my_gk_gloves = gc1.number_input("グローブ", 0, 10, 2, step=1, key="my_gk_g")
+    my_gk_str = gc2.number_input("強度", 0, 10, 1, step=1, key="my_gk_s")
 
 with col_gk2:
     st.error(f"🔴 {opp_team_name}")
-    st.caption("グローブ / 強度")
-    gc1, gc2 = st.columns([1, 1])
-    with gc1:
-        opp_gk_gloves = st.number_input("グローブ", 0, 10, 1, step=1, key="opp_gk_g", label_visibility="collapsed")
-    with gc2:
-        opp_gk_str = st.number_input("強度", 0, 10, 2, step=1, key="opp_gk_s", label_visibility="collapsed")
+    gc1, gc2 = st.columns(2)
+    opp_gk_gloves = gc1.number_input("グローブ", 0, 10, 1, step=1, key="opp_gk_g")
+    opp_gk_str = gc2.number_input("強度", 0, 10, 2, step=1, key="opp_gk_s")
 
 st.markdown("---")
 
@@ -174,7 +172,7 @@ my_formation = {}
 opp_formation = {}
 
 st.markdown("##### 📍 選手配置")
-st.caption("左: 役割(攻/守) / 右: 強度")
+st.caption("「＋」ボタンで選手枠を追加、「ー」で削除できます。")
 
 for z_label, z_id in zones_def:
     opp_label = ""
@@ -226,6 +224,7 @@ if st.button("試合解決 (Resolve Match)", type="primary", use_container_width
 
     for my_zid in order_list:
         opp_zid = clash_map[my_zid]
+        # ラベル検索
         z_label = next(item[0] for item in zones_def if item[1] == my_zid)
         
         u_players = my_formation[my_zid]
