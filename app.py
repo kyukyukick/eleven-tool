@@ -1,44 +1,24 @@
 import streamlit as st
 import random
 
-# --- クラス・関数定義 ---
-
+# --- クラス定義 ---
 class Player:
     def __init__(self, strength, role):
         self.strength = strength
-        self.role = role # 'att' or 'def'
+        self.role = role  # 'att' or 'def'
     def __repr__(self):
         icon = "⚽" if self.role == 'att' else "🛡️"
         return f"{icon}{self.strength}"
 
-def parse_input(text):
-    """入力文字列(例: 'A2 D1')を解析"""
-    players = []
-    if not text: return players
-    text = text.replace("　", " ").upper()
-    tokens = text.split()
-    for t in tokens:
-        try:
-            role_char = t[0]
-            strength = int(t[1:])
-            if role_char == 'A': players.append(Player(strength, 'att'))
-            elif role_char == 'D': players.append(Player(strength, 'def'))
-        except: pass
-    return players
-
+# --- ロジック関数 ---
 def resolve_clash(attackers, defenders, side_name, is_variant):
-    """
-    攻撃解決ロジック
-    """
     successful_shots = []
     available_defenders = sorted(defenders, key=lambda x: x.strength)
     sorted_attackers = sorted(attackers, key=lambda x: x.strength, reverse=True)
-    
     log = []
     
     for att in sorted_attackers:
         candidate_indices = [i for i, d in enumerate(available_defenders) if d.strength >= att.strength]
-        
         if candidate_indices:
             idx = candidate_indices[0]
             blocker = available_defenders.pop(idx)
@@ -54,11 +34,9 @@ def resolve_clash(attackers, defenders, side_name, is_variant):
                     log.append(f"⚠️ {side_name}シュート(強度{att.strength}) -> DF(強度{sacrificed.strength})突破 (Base)")
             else:
                 log.append(f"⚠️ {side_name}シュート(強度{att.strength}) -> フリー (DF不在)")
-                
     return successful_shots, available_defenders, log
 
 def try_save(shots, main_gk_gloves, main_gk_str, bonus_gloves, gk_name, attacking_team_name):
-    """GKセーブ処理"""
     goals = 0
     remaining_bonus = bonus_gloves.copy()
     current_main_gloves = main_gk_gloves
@@ -66,16 +44,14 @@ def try_save(shots, main_gk_gloves, main_gk_str, bonus_gloves, gk_name, attackin
     
     for shot_str in shots:
         saved = False
-        
-        # 1. ボーナスグローブ
+        # ボーナスグローブ
         bonus_candidates = [i for i, g in enumerate(remaining_bonus) if g >= shot_str]
         if bonus_candidates:
             bonus_idx = sorted(bonus_candidates)[0]
             val = remaining_bonus.pop(bonus_idx)
             saved = True
             save_log.append(f"🧤 {gk_name}: 余ったDF(強度{val})がカバーに入りセーブ！")
-            
-        # 2. メインGK
+        # メインGK
         if not saved and current_main_gloves > 0:
             if main_gk_str >= shot_str:
                 current_main_gloves -= 1
@@ -83,87 +59,127 @@ def try_save(shots, main_gk_gloves, main_gk_str, bonus_gloves, gk_name, attackin
                 save_log.append(f"🙌 {gk_name}: 本人がセーブ (残グローブ{current_main_gloves})")
             else:
                 save_log.append(f"🥅 {gk_name}: 強度不足({main_gk_str} < {shot_str})")
-        
         if not saved:
             goals += 1
             save_log.append(f"⚽ {attacking_team_name} GOAL! (強度{shot_str})")
             
     return goals, current_main_gloves, remaining_bonus, save_log
 
-# --- UI構築 ---
+# --- 入力UIコンポーネント ---
+def player_slot_input(key_prefix, count=3):
+    """
+    指定された数だけ選手入力スロット(役割選択+強度選択)を表示し、
+    入力されたPlayerオブジェクトのリストを返す関数
+    """
+    players = []
+    
+    # 役割の選択肢
+    role_options = {"ー": None, "⚽ 攻": "att", "🛡️ 守": "def"}
+    
+    # カラムを作成して横に並べるか、行ごとに並べるか。
+    # スマホで見やすいように、1行に「役割」「強度」を並べるコンパクトなUIにする
+    for i in range(count):
+        c1, c2 = st.columns([2, 1]) # 比率調整
+        with c1:
+            # ラベルなしでスペース節約
+            role_label = role_options.keys()
+            selected_role_key = st.selectbox(
+                f"選手{i+1}", 
+                role_label, 
+                key=f"{key_prefix}_role_{i}", 
+                label_visibility="collapsed" # ラベルを隠す
+            )
+        with c2:
+            strength = st.number_input(
+                "強度", 
+                min_value=1, max_value=9, value=1, 
+                key=f"{key_prefix}_str_{i}",
+                label_visibility="collapsed"
+            )
+        
+        role_val = role_options[selected_role_key]
+        if role_val is not None:
+            players.append(Player(strength, role_val))
+            
+    return players
 
+# --- メインアプリ ---
 st.set_page_config(page_title="Eleven Match Solver", layout="wide")
 st.title("⚽ Eleven Match Solver")
 
 # チーム名入力
-col_team1, col_team2 = st.columns(2)
-with col_team1:
-    my_team_name = st.text_input("自分のチーム名", value="My Team")
-with col_team2:
-    opp_team_name = st.text_input("相手のチーム名", value="Opponent")
+with st.expander("チーム名・ルール設定", expanded=False):
+    col_team1, col_team2 = st.columns(2)
+    with col_team1:
+        my_team_name = st.text_input("自分のチーム名", value="My Team")
+    with col_team2:
+        opp_team_name = st.text_input("相手のチーム名", value="Opponent")
 
-# 設定エリア
-st.markdown("---")
-is_variant = st.checkbox('Anti-Moneyball Variant を有効にする', value=True)
-if is_variant:
-    st.info("設定ON: 最強DF犠牲ルール、余りDFのグローブ化、ダイス順序決定が適用されます。")
-else:
-    st.warning("設定OFF: 基本ルール（固定順、最弱DF消費、余りDF効果なし）で処理します。")
+    is_variant = st.checkbox('Anti-Moneyball Variant (バリアント) を有効にする', value=True)
+    if is_variant:
+        st.caption("✅ ON: 最強DF犠牲 / 余りDFグローブ化 / ランダム順序")
+    else:
+        st.caption("☑️ OFF: 基本ルール")
 
 # GK入力
-st.markdown("---")
-st.subheader("🧤 ゴールキーパー設定")
+st.markdown("##### 🧤 ゴールキーパー")
 col_gk1, col_gk2 = st.columns(2)
-
 with col_gk1:
-    st.markdown(f"**🔵 {my_team_name} GK**")
-    my_gk_gloves = st.number_input("自分のグローブ数", 0, 10, 2)
-    my_gk_str = st.number_input("自分のGK強度", 0, 10, 1)
+    st.info(f"🔵 {my_team_name}")
+    c1, c2 = st.columns(2)
+    my_gk_gloves = c1.number_input("自グローブ数", 0, 10, 2)
+    my_gk_str = c2.number_input("自GK強度", 0, 10, 1)
 
 with col_gk2:
-    st.markdown(f"**🔴 {opp_team_name} GK**")
-    opp_gk_gloves = st.number_input("相手のグローブ数", 0, 10, 1)
-    opp_gk_str = st.number_input("相手のGK強度", 0, 10, 2)
+    st.error(f"🔴 {opp_team_name}")
+    c1, c2 = st.columns(2)
+    opp_gk_gloves = c1.number_input("敵グローブ数", 0, 10, 1)
+    opp_gk_str = c2.number_input("敵GK強度", 0, 10, 2)
 
-# ゾーン入力
 st.markdown("---")
-st.subheader("📍 ゾーン配置")
-st.caption("入力例: `A2 D1` (攻撃2, 守備1)")
 
+# ゾーン入力 (スロット式)
 zones_def = [
-    ("Left Wing (左翼)", "LW"),
-    ("Right Wing (右翼)", "RW"),
-    ("Center Fwd (中央FW)", "CF"),
-    ("Center Mid (中央MF)", "CM"),
-    ("Center Def (中央DF)", "CD")
+    ("Left Wing (左翼)", "LW", 3), # ウイングは最大3人
+    ("Right Wing (右翼)", "RW", 3),
+    ("Center Fwd (中央FW)", "CF", 4), # 中央は少し多めに枠を用意
+    ("Center Mid (中央MF)", "CM", 4),
+    ("Center Def (中央DF)", "CD", 4)
 ]
 
-zone_inputs = {}
+my_formation = {}
+opp_formation = {}
 
-for z_label, z_id in zones_def:
+st.markdown("##### 📍 選手配置")
+st.caption("「ー」を「⚽攻」や「🛡️守」に変えて強度を指定してください")
+
+for z_label, z_id, slot_count in zones_def:
     opp_label = ""
+    # 対戦相手の表示
     if z_id == "LW": opp_label = "(vs 相手RW)"
     elif z_id == "RW": opp_label = "(vs 相手LW)"
     elif z_id == "CF": opp_label = "(vs 相手CD)"
     elif z_id == "CM": opp_label = "(vs 相手CM)"
     elif z_id == "CD": opp_label = "(vs 相手CF)"
     
-    with st.expander(f"{z_label} {opp_label}", expanded=True):
-        c1, c2 = st.columns(2)
-        with c1:
-            w_my = st.text_input(f"{my_team_name} ({z_id})", key=f"my_{z_id}", placeholder='例: A2 D1')
-        with c2:
-            w_opp = st.text_input(f"{opp_team_name}", key=f"opp_{z_id}", placeholder='例: D2 A1')
-        zone_inputs[z_id] = {'my': w_my, 'opp': w_opp, 'label': z_label}
+    # Expanderでエリアごとに開閉
+    with st.expander(f"{z_label} {opp_label}", expanded=False):
+        col_my, col_opp = st.columns(2)
+        
+        # 自分の入力欄
+        with col_my:
+            st.markdown(f"**🔵 {my_team_name}**")
+            my_formation[z_id] = player_slot_input(f"my_{z_id}", count=slot_count)
+            
+        # 相手の入力欄
+        with col_opp:
+            st.markdown(f"**🔴 {opp_team_name}**")
+            opp_formation[z_id] = player_slot_input(f"opp_{z_id}", count=slot_count)
 
-# 実行ボタン
+# 実行ボタン (画面下部に固定または目立つように)
 st.markdown("---")
-if st.button("試合解決 (Resolve Match)", type="primary"):
+if st.button("試合解決 (Resolve Match)", type="primary", use_container_width=True):
     st.divider()
-    
-    # データ準備
-    my_formation = {zid: parse_input(zone_inputs[zid]['my']) for _, zid in zones_def}
-    opp_formation = {zid: parse_input(zone_inputs[zid]['opp']) for _, zid in zones_def}
     
     st.write(f"### ■ {my_team_name} vs {opp_team_name}")
     
@@ -184,19 +200,22 @@ if st.button("試合解決 (Resolve Match)", type="primary"):
     opp_score = 0
     user_bonus = []
     opp_bonus = []
-    
-    # GK変数はループ内で変動するためコピー
     u_gk_g = my_gk_gloves
     o_gk_g = opp_gk_gloves
 
     for my_zid in order_list:
         opp_zid = clash_map[my_zid]
-        z_label = zone_inputs[my_zid]['label']
+        # ラベル検索
+        z_label = next(item[0] for item in zones_def if item[1] == my_zid)
+        
         u_players = my_formation[my_zid]
         o_players = opp_formation[opp_zid]
         
         st.markdown(f"#### 📍 {z_label}")
-        st.caption(f"{my_team_name}: {u_players}  vs  {opp_team_name}: {o_players}")
+        # 選手がいない場合の表示調整
+        u_disp = u_players if u_players else "なし"
+        o_disp = o_players if o_players else "なし"
+        st.caption(f"{my_team_name}: {u_disp}  vs  {opp_team_name}: {o_disp}")
         
         u_att = [p for p in u_players if p.role == 'att']
         u_def = [p for p in u_players if p.role == 'def']
