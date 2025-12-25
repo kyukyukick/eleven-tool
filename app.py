@@ -67,34 +67,34 @@ def try_save(shots, main_gk_gloves, main_gk_str, bonus_gloves, gk_name, attackin
 
 # --- UI構築ヘルパー ---
 
-def render_dynamic_inputs(prefix, team_label):
+def render_dynamic_inputs(prefix):
     """
-    指定されたキー(prefix)で、動的に行を追加・削除できる入力欄を生成する
+    動的に行を追加・削除できる入力欄を生成する (スマホ横並び対応版)
     """
-    # Session Stateの初期化 (このゾーンの選手数を管理)
+    # Session Stateで人数管理
     count_key = f"count_{prefix}"
     if count_key not in st.session_state:
-        st.session_state[count_key] = 1 # デフォルト1人
+        st.session_state[count_key] = 1  # デフォルト1人
     
     current_count = st.session_state[count_key]
     players = []
     
-    role_options = {"ー": None, "⚽ 攻": "att", "🛡️ 守": "def"}
+    # 選択肢 (表示幅を節約)
+    role_options = {"ー": None, "⚽攻": "att", "🛡️守": "def"}
 
-    # 現在のカウント分だけ入力欄を表示
     for i in range(current_count):
-        # カラム比率を調整してボタンが潰れないようにする
-        c1, c2 = st.columns([1.6, 1]) 
+        # ★スマホ対策: 比率を調整して横並びを維持させる
+        # 左(役割):右(強度) = 55:45 くらい
+        c1, c2 = st.columns([1.2, 1]) 
         
         with c1:
             role_key = st.selectbox(
                 f"選手{i+1}", 
                 options=role_options.keys(), 
                 key=f"{prefix}_role_{i}", 
-                label_visibility="collapsed"
+                label_visibility="collapsed" # ラベル非表示で詰める
             )
         with c2:
-            # step=1を指定することで+/-ボタンを確実に出す
             strength = st.number_input(
                 "強度", 
                 min_value=1, max_value=20, value=1, step=1,
@@ -106,16 +106,20 @@ def render_dynamic_inputs(prefix, team_label):
         if role_val is not None:
             players.append(Player(strength, role_val))
     
-    # 追加・削除ボタン
-    b_col1, b_col2 = st.columns(2)
-    if b_col1.button("＋ 追加", key=f"add_{prefix}", use_container_width=True):
+    # 追加・削除ボタンエリア
+    b_col1, b_col2 = st.columns([1, 1])
+    
+    # ボタンのコールバック関数定義
+    def increase():
         st.session_state[count_key] += 1
-        st.rerun()
-        
-    if current_count > 0:
-        if b_col2.button("ー 削除", key=f"del_{prefix}", use_container_width=True):
+    def decrease():
+        if st.session_state[count_key] > 0:
             st.session_state[count_key] -= 1
-            st.rerun()
+
+    with b_col1:
+        st.button("＋", key=f"add_{prefix}", on_click=increase, use_container_width=True)
+    with b_col2:
+        st.button("ー", key=f"del_{prefix}", on_click=decrease, use_container_width=True, disabled=(current_count==0))
 
     return players
 
@@ -124,7 +128,7 @@ st.set_page_config(page_title="Eleven Match Solver", layout="wide")
 st.title("⚽ Eleven Match Solver")
 
 # チーム名・設定
-with st.expander("チーム名・ルール設定", expanded=False):
+with st.expander("⚙️ チーム名・ルール設定", expanded=False):
     col_team1, col_team2 = st.columns(2)
     with col_team1:
         my_team_name = st.text_input("自分のチーム名", value="My Team")
@@ -142,15 +146,16 @@ st.markdown("##### 🧤 ゴールキーパー")
 col_gk1, col_gk2 = st.columns(2)
 with col_gk1:
     st.info(f"🔵 {my_team_name}")
-    c1, c2 = st.columns(2)
-    my_gk_gloves = c1.number_input("自グローブ", 0, 10, 2, step=1)
-    my_gk_str = c2.number_input("自GK強度", 0, 10, 1, step=1)
+    # スマホで見やすいように横並び調整
+    gc1, gc2 = st.columns(2)
+    my_gk_gloves = gc1.number_input("グローブ", 0, 10, 2, step=1, key="my_gk_g")
+    my_gk_str = gc2.number_input("強度", 0, 10, 1, step=1, key="my_gk_s")
 
 with col_gk2:
     st.error(f"🔴 {opp_team_name}")
-    c1, c2 = st.columns(2)
-    opp_gk_gloves = c1.number_input("敵グローブ", 0, 10, 1, step=1)
-    opp_gk_str = c2.number_input("敵GK強度", 0, 10, 2, step=1)
+    gc1, gc2 = st.columns(2)
+    opp_gk_gloves = gc1.number_input("グローブ", 0, 10, 1, step=1, key="opp_gk_g")
+    opp_gk_str = gc2.number_input("強度", 0, 10, 2, step=1, key="opp_gk_s")
 
 st.markdown("---")
 
@@ -167,7 +172,7 @@ my_formation = {}
 opp_formation = {}
 
 st.markdown("##### 📍 選手配置")
-st.caption("「追加」ボタンで行を増やせます。")
+st.caption("「＋」ボタンで選手枠を追加、「ー」で削除できます。")
 
 for z_label, z_id in zones_def:
     opp_label = ""
@@ -183,12 +188,12 @@ for z_label, z_id in zones_def:
         # 自分の入力欄
         with col_my:
             st.markdown(f"**🔵 {my_team_name}**")
-            my_formation[z_id] = render_dynamic_inputs(f"my_{z_id}", my_team_name)
+            my_formation[z_id] = render_dynamic_inputs(f"my_{z_id}")
             
         # 相手の入力欄
         with col_opp:
             st.markdown(f"**🔴 {opp_team_name}**")
-            opp_formation[z_id] = render_dynamic_inputs(f"opp_{z_id}", opp_team_name)
+            opp_formation[z_id] = render_dynamic_inputs(f"opp_{z_id}")
 
 # 実行ボタン
 st.markdown("---")
@@ -219,6 +224,7 @@ if st.button("試合解決 (Resolve Match)", type="primary", use_container_width
 
     for my_zid in order_list:
         opp_zid = clash_map[my_zid]
+        # ラベル検索
         z_label = next(item[0] for item in zones_def if item[1] == my_zid)
         
         u_players = my_formation[my_zid]
