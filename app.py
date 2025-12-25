@@ -44,14 +44,12 @@ def try_save(shots, main_gk_gloves, main_gk_str, bonus_gloves, gk_name, attackin
     
     for shot_str in shots:
         saved = False
-        # ボーナスグローブ
         bonus_candidates = [i for i, g in enumerate(remaining_bonus) if g >= shot_str]
         if bonus_candidates:
             bonus_idx = sorted(bonus_candidates)[0]
             val = remaining_bonus.pop(bonus_idx)
             saved = True
             save_log.append(f"🧤 {gk_name}: 余ったDF(強度{val})がカバーに入りセーブ！")
-        # メインGK
         if not saved and current_main_gloves > 0:
             if main_gk_str >= shot_str:
                 current_main_gloves -= 1
@@ -65,11 +63,35 @@ def try_save(shots, main_gk_gloves, main_gk_str, bonus_gloves, gk_name, attackin
             
     return goals, current_main_gloves, remaining_bonus, save_log
 
-# --- UI構築ヘルパー ---
+# --- メインアプリ設定 ---
+st.set_page_config(page_title="Eleven Match Solver", layout="wide")
 
+# ★ここが重要: スマホでの縦並び強制を解除するカスタムCSS
+st.markdown("""
+    <style>
+    /* モバイル表示時でもカラムを横並びに維持する */
+    div[data-testid="column"] {
+        width: 50% !important;
+        flex: 1 1 auto !important;
+        min-width: 10px !important;
+    }
+    /* カラムの折り返しを防ぐ */
+    div[data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+    }
+    /* 入力欄の余白を詰める */
+    .stSelectbox, .stNumberInput {
+        min-width: 0px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("⚽ Eleven Match Solver")
+
+# --- UI構築ヘルパー ---
 def render_dynamic_inputs(prefix):
     """
-    動的に行を追加・削除できる入力欄を生成する (横並び強制版)
+    動的に行を追加・削除できる入力欄 (強制横並び版)
     """
     count_key = f"count_{prefix}"
     if count_key not in st.session_state:
@@ -81,19 +103,19 @@ def render_dynamic_inputs(prefix):
     role_options = {"ー": None, "⚽攻": "att", "🛡️守": "def"}
 
     for i in range(current_count):
-        # ★ここを調整: [1, 1]の等幅にして横並びを維持しやすくする
-        c1, c2 = st.columns([1, 1]) 
+        # カスタムCSSにより、狭い画面でも必ず横並びになります
+        c1, c2 = st.columns([1.2, 1]) 
         
         with c1:
             role_key = st.selectbox(
-                f"役割{i}", 
+                f"role_{i}", 
                 options=role_options.keys(), 
                 key=f"{prefix}_role_{i}", 
                 label_visibility="collapsed"
             )
         with c2:
             strength = st.number_input(
-                f"強度{i}", 
+                f"str_{i}", 
                 min_value=1, max_value=20, value=1, step=1,
                 key=f"{prefix}_str_{i}",
                 label_visibility="collapsed"
@@ -105,6 +127,7 @@ def render_dynamic_inputs(prefix):
     
     # 追加・削除ボタン
     b_col1, b_col2 = st.columns([1, 1])
+    
     def increase():
         st.session_state[count_key] += 1
     def decrease():
@@ -117,10 +140,6 @@ def render_dynamic_inputs(prefix):
         st.button("ー削除", key=f"del_{prefix}", on_click=decrease, use_container_width=True, disabled=(current_count==0))
 
     return players
-
-# --- メインアプリ ---
-st.set_page_config(page_title="Eleven Match Solver", layout="wide")
-st.title("⚽ Eleven Match Solver")
 
 # チーム名・設定
 with st.expander("⚙️ チーム名・ルール設定", expanded=False):
@@ -142,22 +161,21 @@ col_gk1, col_gk2 = st.columns(2)
 
 with col_gk1:
     st.info(f"🔵 {my_team_name}")
-    # ラベルを上に表示し、入力欄を横並びにする
     st.caption("グローブ / 強度")
     gc1, gc2 = st.columns([1, 1])
     with gc1:
-        my_gk_gloves = st.number_input("グローブ", 0, 10, 2, step=1, key="my_gk_g", label_visibility="collapsed")
+        my_gk_gloves = st.number_input("g", 0, 10, 2, step=1, key="my_gk_g", label_visibility="collapsed")
     with gc2:
-        my_gk_str = st.number_input("強度", 0, 10, 1, step=1, key="my_gk_s", label_visibility="collapsed")
+        my_gk_str = st.number_input("s", 0, 10, 1, step=1, key="my_gk_s", label_visibility="collapsed")
 
 with col_gk2:
     st.error(f"🔴 {opp_team_name}")
     st.caption("グローブ / 強度")
     gc1, gc2 = st.columns([1, 1])
     with gc1:
-        opp_gk_gloves = st.number_input("グローブ", 0, 10, 1, step=1, key="opp_gk_g", label_visibility="collapsed")
+        opp_gk_gloves = st.number_input("g", 0, 10, 1, step=1, key="opp_gk_g", label_visibility="collapsed")
     with gc2:
-        opp_gk_str = st.number_input("強度", 0, 10, 2, step=1, key="opp_gk_s", label_visibility="collapsed")
+        opp_gk_str = st.number_input("s", 0, 10, 2, step=1, key="opp_gk_s", label_visibility="collapsed")
 
 st.markdown("---")
 
